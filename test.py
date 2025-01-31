@@ -32,8 +32,7 @@ def get_data_openclose(path, paradigm):
     
     return data_train,onehot_labels_train,data_valid,onehot_labels_valid
 
-hr_file_path = "/home/hanwei/Music/P003"
-paradigm = "Open"
+hr_file_path = "/home/hanwei/Music/P005"
 
 for path, folders, files in os.walk(hr_file_path):
 
@@ -44,7 +43,7 @@ for path, folders, files in os.walk(hr_file_path):
                     print(file)
 
                     data_path = os.path.join(hr_file_path, folder, file)
-X_train_all,y_train_onehot_all,X_test_all,y_test_all = get_data_openclose(data_path,paradigm)
+X_train_all,y_train_onehot_all,X_test_all,y_test_all = get_data_openclose(data_path,"")
 
 all_channels = ['Fp1','Fz','F3','F7','FT9','FC5','FC1','C3','T7','CP5','CP1','Pz','P3','P7','O1','Oz','O2','P4','P8',
                             'CP6','CP2','Cz','C4','T8','FT10','FC6','FC2','F4','F8','Fp2','AF7','AF3','AFz','F1','F5','FT7','FC3','C1',
@@ -79,6 +78,8 @@ y_train_onehot_all = binary_labels = np.argmax(y_train_onehot_all, axis=1)
 print(y_train_onehot_all.shape)
 
 num_folds = 10
+total_score = 0
+score_array = np.zeros(num_folds)
 kf = KFold(n_splits=num_folds, shuffle=True, random_state=1104)
 
 for i_fold in range(0,10):
@@ -112,36 +113,13 @@ for i_fold in range(0,10):
 
     import torch.nn.functional as F
     import torch.nn as nn
-    # class CustomEEGNet(nn.Module):
-    #     def __init__(self, n_channels, n_classes, input_size):
-    #         super().__init__()
-    #         self.conv1 = nn.Conv2d(1, 16, kernel_size=(1, 5), padding=(0, 2))  # Temporal convolution
-    #         self.bn1 = nn.BatchNorm2d(16)
-    #         self.conv2 = nn.Conv2d(16, 32, kernel_size=(n_channels, 1))  # Spatial convolution
-    #         self.bn2 = nn.BatchNorm2d(32)
-    #         self.fc1 = nn.Linear(32 * (input_size - 0), 64)  # Fully connected layer
-    #         self.fc2 = nn.Linear(64, n_classes)  # Output layer
-
-    #     def forward(self, x):
-    #         x = x.unsqueeze(1)  # Add a channel dimension (B, C, H, W)
-    #         x = F.relu(self.bn1(self.conv1(x)))
-    #         x = F.relu(self.bn2(self.conv2(x)))
-    #         x = x.view(x.shape[0], -1)  # Flatten
-    #         x = F.relu(self.fc1(x))
-    #         x = self.fc2(x)  # No activation (will use softmax in loss)
-    #         print(x.shape)
-    #         return x
-
-    # model = CustomEEGNet(n_chans,
-    #     n_classes,
-    #     input_window_samples)
-    
-    # print(model)
 
     model = ShallowFBCSPNet(
         n_chans,
         n_classes,
         n_times=input_window_samples,
+        n_filters_time=30,
+        n_filters_spat=30,
         final_conv_length='auto',
     )
 
@@ -153,15 +131,15 @@ for i_fold in range(0,10):
         model = model.cuda()
 
     # We found these values to be good for the shallow network:
-    lr = 0.0625 * 0.01
-    weight_decay = 0
+    lr = 0.0625 * 0.05
+    weight_decay = 0.005
 
     # For deep4 they should be:
     # lr = 1 * 0.01
     # weight_decay = 0.5 * 0.001
 
     batch_size = 32
-    n_epochs = 40
+    n_epochs = 150
 
     clf = EEGClassifier(
         model,
@@ -183,4 +161,9 @@ for i_fold in range(0,10):
     _ = clf.fit(dataset, y=None, epochs=n_epochs)
 
     score = clf.score(valid_dataset,y=y_test)
+    total_score += score
+    score_array[i_fold] = score
     print(f"Model Score: {score}")
+
+print(f"Final Score: {total_score/num_folds}")
+print(score_array)

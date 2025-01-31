@@ -81,7 +81,7 @@ class ShallowFBCSPNet(EEGModuleMixin, nn.Sequential):
             split_first_layer=True,
             batch_norm=True,
             batch_norm_alpha=0.1,
-            drop_prob=0.2,
+            drop_prob=0.5,
             chs_info=None,
             input_window_seconds=None,
             sfreq=None,
