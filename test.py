@@ -2,6 +2,16 @@
 from utils.load_eeg import load_data_per_subject_eeg
 import numpy as np
 import os
+import torch
+from sklearn.model_selection import KFold
+from model import ShallowFBCSPNet
+# from braindecode.models import ShallowFBCSPNet
+from braindecode.util import set_random_seeds
+from skorch.callbacks import LRScheduler
+from skorch.helper import predefined_split
+from braindecode import EEGClassifier
+import mne
+mne.set_log_level("ERROR")
 
 ## HELPER FUNCTIONS
 def one_hot(a, num_classes):
@@ -11,7 +21,7 @@ def one_hot(a, num_classes):
 def get_data_openclose(path, paradigm):
     data,labels = load_data_per_subject_eeg(path, paradigm)
 
-    data = data[:,np.newaxis,:,:]
+    # data = data[:,np.newaxis,:,:]
     onehot_labels = one_hot(labels[0],2)
 
     data_valid = data[len(data):]
@@ -22,7 +32,7 @@ def get_data_openclose(path, paradigm):
     
     return data_train,onehot_labels_train,data_valid,onehot_labels_valid
 
-hr_file_path = "/home/hanwei/Music/P004"
+hr_file_path = "/home/hanwei/Music/P003"
 paradigm = "Open"
 
 for path, folders, files in os.walk(hr_file_path):
@@ -47,152 +57,130 @@ channel_to_select = ['FC5', 'FC1', 'C3',
                                    'C5', 'CP3', 'CPz', 'CP4', 'C6',
                                    'C2', 'FC4']
 new_channel_index =[i for cadd in channel_to_select for i,c in enumerate(all_channels) if c==cadd]
-X_train_all = X_train_all[:,:,new_channel_index,:]
+X_train_all = X_train_all[:,new_channel_index,:]
 
 print(X_train_all.shape)
 print(y_train_onehot_all.shape)
 ## End Load datasets
 
 ### Random dataset creation
+n_classes = 2
+classes = list(range(n_classes))
+n_chans = 20
+input_window_samples = 1000
 
 # from braindecode.datasets import BaseConcatDataset, WindowsDataset
 from braindecode.datautil import create_from_X_y
 
 # Example data (n_trials, n_channels, n_times)
-X = np.random.rand(100, 22, 1125)  # 100 trials, 22 channels, 1125 time points
-y = np.random.randint(0, 2, size=(100,))  # Binary labels (0 or 1)
-
 # Convert to a BaseConcatDataset
-dataset = create_from_X_y(
-    X, y, sfreq=100,  # Sampling frequency, optional
-    # window_size_samples=1125,  # Use full trial or windowed data
-    drop_last_window=False
-)
-### Random dataset creation
+print(X_train_all.shape)
+y_train_onehot_all = binary_labels = np.argmax(y_train_onehot_all, axis=1)
+print(y_train_onehot_all.shape)
 
-# from numpy import multiply
+num_folds = 10
+kf = KFold(n_splits=num_folds, shuffle=True, random_state=1104)
 
-# from braindecode.preprocessing import (Preprocessor,
-#                                        exponential_moving_standardize,
-#                                        preprocess)
+for i_fold in range(0,10):
+    y_index = list(kf.split(X_train_all, y_train_onehot_all))[i_fold][1]
+    x_index = list(kf.split(X_train_all, y_train_onehot_all))[i_fold][0]
+    X_train = X_train_all[x_index]
+    y_train_onehot = y_train_onehot_all[x_index]
+    X_test = X_train_all[y_index]
+    y_test = y_train_onehot_all[y_index]
+    # print(X_train.shape)
 
-# low_cut_hz = 4.  # low cut frequency for filtering
-# high_cut_hz = 38.  # high cut frequency for filtering
-# # Parameters for exponential moving standardization
-# factor_new = 1e-3
-# init_block_size = 1000
-# # Factor to convert from V to uV
-# factor = 1e6
+    dataset = create_from_X_y(
+        X_train, y_train_onehot, sfreq=200,  # Sampling frequency, optional
+        # window_size_samples=1125,  # Use full trial or windowed data
+        drop_last_window=False
+    )
+    valid_dataset = create_from_X_y(
+        X_test, y_test, sfreq=200,  # Sampling frequency, optional
+        # window_size_samples=1125,  # Use full trial or windowed data
+        drop_last_window=False
+    )
+    ## Random dataset creation
 
-# preprocessors = [
-#     Preprocessor('pick_types', eeg=True, meg=False, stim=False),  # Keep EEG sensors
-#     Preprocessor(lambda data: multiply(data, factor)),  # Convert from V to uV
-#     Preprocessor('filter', l_freq=low_cut_hz, h_freq=high_cut_hz),  # Bandpass filter
-#     Preprocessor(exponential_moving_standardize,  # Exponential moving standardization
-#                  factor_new=factor_new, init_block_size=init_block_size)
-# ]
+    cuda = torch.cuda.is_available()  # check if GPU is available, if True chooses to use it
+    device = 'cuda' if cuda else 'cpu'
+    if cuda:
+        torch.backends.cudnn.benchmark = True
 
-# # Transform the data
-# print(dataset)
-# preprocess(dataset, preprocessors, n_jobs=-1)
+    seed = 1104
+    set_random_seeds(seed=seed, cuda=cuda)
 
-# from braindecode.preprocessing import create_windows_from_events
+    import torch.nn.functional as F
+    import torch.nn as nn
+    # class CustomEEGNet(nn.Module):
+    #     def __init__(self, n_channels, n_classes, input_size):
+    #         super().__init__()
+    #         self.conv1 = nn.Conv2d(1, 16, kernel_size=(1, 5), padding=(0, 2))  # Temporal convolution
+    #         self.bn1 = nn.BatchNorm2d(16)
+    #         self.conv2 = nn.Conv2d(16, 32, kernel_size=(n_channels, 1))  # Spatial convolution
+    #         self.bn2 = nn.BatchNorm2d(32)
+    #         self.fc1 = nn.Linear(32 * (input_size - 0), 64)  # Fully connected layer
+    #         self.fc2 = nn.Linear(64, n_classes)  # Output layer
 
-# trial_start_offset_seconds = -0.5
-# # Extract sampling frequency, check that they are same in all datasets
-# sfreq = dataset.datasets[0].raw.info['sfreq']
-# assert all([ds.raw.info['sfreq'] == sfreq for ds in dataset.datasets])
-# # Calculate the trial start offset in samples.
-# trial_start_offset_samples = int(trial_start_offset_seconds * sfreq)
+    #     def forward(self, x):
+    #         x = x.unsqueeze(1)  # Add a channel dimension (B, C, H, W)
+    #         x = F.relu(self.bn1(self.conv1(x)))
+    #         x = F.relu(self.bn2(self.conv2(x)))
+    #         x = x.view(x.shape[0], -1)  # Flatten
+    #         x = F.relu(self.fc1(x))
+    #         x = self.fc2(x)  # No activation (will use softmax in loss)
+    #         print(x.shape)
+    #         return x
 
-# # Create windows using braindecode function for this. It needs parameters to define how
-# # trials should be used.
-# windows_dataset = create_windows_from_events(
-#     dataset,
-#     trial_start_offset_samples=trial_start_offset_samples,
-#     trial_stop_offset_samples=0,
-#     preload=True,
-# )
+    # model = CustomEEGNet(n_chans,
+    #     n_classes,
+    #     input_window_samples)
+    
+    # print(model)
 
-# splitted = windows_dataset.split('session')
-# train_set = splitted['0train']  # Session train
-# valid_set = splitted['1test']  # Session evaluation
+    model = ShallowFBCSPNet(
+        n_chans,
+        n_classes,
+        n_times=input_window_samples,
+        final_conv_length='auto',
+    )
 
-import torch
+    # Display torchinfo table describing the model
+    # print(model)
 
-from braindecode.models import ShallowFBCSPNet
-from braindecode.util import set_random_seeds
+    # Send model to GPU
+    if cuda:
+        model = model.cuda()
 
-cuda = torch.cuda.is_available()  # check if GPU is available, if True chooses to use it
-device = 'cuda' if cuda else 'cpu'
-if cuda:
-    torch.backends.cudnn.benchmark = True
-# Set random seed to be able to roughly reproduce results
-# Note that with cudnn benchmark set to True, GPU indeterminism
-# may still make results substantially different between runs.
-# To obtain more consistent results at the cost of increased computation time,
-# you can set `cudnn_benchmark=False` in `set_random_seeds`
-# or remove `torch.backends.cudnn.benchmark = True`
-seed = 1104
-set_random_seeds(seed=seed, cuda=cuda)
+    # We found these values to be good for the shallow network:
+    lr = 0.0625 * 0.01
+    weight_decay = 0
 
-n_classes = 4
-classes = list(range(n_classes))
-# Extract number of chans and time steps from dataset
-# n_chans = train_set[0][0].shape[0]
-# input_window_samples = train_set[0][0].shape[1]
-# print(input_window_samples)
-n_chans = 22
-input_window_samples = 1125
+    # For deep4 they should be:
+    # lr = 1 * 0.01
+    # weight_decay = 0.5 * 0.001
 
-model = ShallowFBCSPNet(
-    n_chans,
-    n_classes,
-    input_window_samples=input_window_samples,
-    final_conv_length='auto',
-)
+    batch_size = 32
+    n_epochs = 40
 
-# Display torchinfo table describing the model
-print(model)
+    clf = EEGClassifier(
+        model,
+        criterion=torch.nn.NLLLoss,
+        optimizer=torch.optim.AdamW,
+        train_split=predefined_split(valid_dataset),  # using valid_set for validation
+        optimizer__lr=lr,
+        optimizer__weight_decay=weight_decay,
+        batch_size=batch_size,
+        callbacks=[
+            "accuracy", ("lr_scheduler", LRScheduler('CosineAnnealingLR', T_max=n_epochs - 1)),
+        ],
+        device=device,
+        classes=classes,
+    )
+    # Model training for the specified number of epochs. `y` is None as it is
+    # already supplied in the dataset.
 
-# Send model to GPU
-if cuda:
-    model = model.cuda()
+    _ = clf.fit(dataset, y=None, epochs=n_epochs)
 
-from skorch.callbacks import LRScheduler
-from skorch.helper import predefined_split
-
-from braindecode import EEGClassifier
-
-# We found these values to be good for the shallow network:
-lr = 0.0625 * 0.01
-weight_decay = 0
-
-# For deep4 they should be:
-# lr = 1 * 0.01
-# weight_decay = 0.5 * 0.001
-
-batch_size = 32
-n_epochs = 4
-
-clf = EEGClassifier(
-    model,
-    criterion=torch.nn.NLLLoss,
-    optimizer=torch.optim.AdamW,
-    train_split=predefined_split(dataset),  # using valid_set for validation
-    optimizer__lr=lr,
-    optimizer__weight_decay=weight_decay,
-    batch_size=batch_size,
-    callbacks=[
-        "accuracy", ("lr_scheduler", LRScheduler('CosineAnnealingLR', T_max=n_epochs - 1)),
-    ],
-    device=device,
-    classes=classes,
-)
-# Model training for the specified number of epochs. `y` is None as it is
-# already supplied in the dataset.
-
-
-_ = clf.fit(dataset, y=None, epochs=n_epochs)
-
-# _ = clf.fit(train_set, y=None, epochs=n_epochs)
+    score = clf.score(valid_dataset,y=y_test)
+    print(f"Model Score: {score}")
