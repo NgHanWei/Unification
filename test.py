@@ -32,17 +32,21 @@ def get_data_openclose(path, paradigm):
     
     return data_train,onehot_labels_train,data_valid,onehot_labels_valid
 
+## Obtain data path
+def get_data_path(hr_file_path):
+    for path, folders, files in os.walk(hr_file_path):
+
+            for folder in folders:
+                print(folder)
+                for file in os.listdir(f"{path}/{folder}"):
+                    if file.endswith(".vhdr"):
+                        print(file)
+
+                        data_path = os.path.join(hr_file_path, folder, file)
+    return data_path
+
 hr_file_path = "/home/hanwei/Music/P005"
-
-for path, folders, files in os.walk(hr_file_path):
-
-        for folder in folders:
-            print(folder)
-            for file in os.listdir(f"{path}/{folder}"):
-                if file.endswith(".vhdr"):
-                    print(file)
-
-                    data_path = os.path.join(hr_file_path, folder, file)
+data_path = get_data_path(hr_file_path)
 X_train_all,y_train_onehot_all,X_test_all,y_test_all = get_data_openclose(data_path,"")
 
 all_channels = ['Fp1','Fz','F3','F7','FT9','FC5','FC1','C3','T7','CP5','CP1','Pz','P3','P7','O1','Oz','O2','P4','P8',
@@ -57,10 +61,49 @@ channel_to_select = ['FC5', 'FC1', 'C3',
                                    'C2', 'FC4']
 new_channel_index =[i for cadd in channel_to_select for i,c in enumerate(all_channels) if c==cadd]
 X_train_all = X_train_all[:,new_channel_index,:]
+y_train_onehot_all = binary_labels = np.argmax(y_train_onehot_all, axis=1)
 
 print(X_train_all.shape)
 print(y_train_onehot_all.shape)
 ## End Load datasets
+
+## Subject Independent
+print("ADDING NEW SUBJ")
+# def subj_independent(new_files):
+#     X_train_new = []
+#     y_train_onehot_new = []
+#     for new_file in new_files:
+#         eeg_path = get_data_path(new_file)
+#         X_train_new_2,y_train_onehot_new_2,X_test_all,y_test_all = get_data_openclose(eeg_path,"")
+#         y_train_onehot_new_2 = binary_labels = np.argmax(y_train_onehot_new_2, axis=1)
+#         X_train_new_2 = X_train_new_2[:,new_channel_index,:]
+
+#         if len(X_train_new) == 0:
+#             X_train_new = X_train_new_2
+#             y_train_onehot_new = y_train_onehot_new_2
+#         else:
+#             X_train_new = np.concatenate((X_train_new, X_train_new_2), axis=0)
+#             y_train_onehot_new = np.concatenate((y_train_onehot_new, y_train_onehot_new_2), axis=0)
+
+#     return X_train_new,y_train_onehot_new
+def subj_independent(new_file):
+    eeg_path = get_data_path(new_file)
+    X_train_new_2,y_train_onehot_new_2,X_test_all,y_test_all = get_data_openclose(eeg_path,"")
+    y_train_onehot_new_2 = binary_labels = np.argmax(y_train_onehot_new_2, axis=1)
+    X_train_new_2 = X_train_new_2[:,new_channel_index,:]
+
+    return X_train_new_2,y_train_onehot_new_2
+
+new_file = '/home/hanwei/Music/P003'
+X_train_new,y_train_onehot_new = subj_independent(new_file)
+
+new_file = '/home/hanwei/Music/MBCI005'
+X_train_new_2,y_train_onehot_new_2 = subj_independent(new_file)
+
+X_train_new = np.concatenate((X_train_new, X_train_new_2), axis=0)
+y_train_onehot_new = np.concatenate((y_train_onehot_new, y_train_onehot_new_2), axis=0)
+
+# X_train_new,y_train_onehot_new = subj_independent(['/home/hanwei/Music/P003','/home/hanwei/Music/MBCI005'])
 
 ### Random dataset creation
 n_classes = 2
@@ -73,9 +116,7 @@ from braindecode.datautil import create_from_X_y
 
 # Example data (n_trials, n_channels, n_times)
 # Convert to a BaseConcatDataset
-print(X_train_all.shape)
-y_train_onehot_all = binary_labels = np.argmax(y_train_onehot_all, axis=1)
-print(y_train_onehot_all.shape)
+# print(X_train_all.shape)
 
 num_folds = 10
 total_score = 0
@@ -90,6 +131,10 @@ for i_fold in range(0,10):
     X_test = X_train_all[y_index]
     y_test = y_train_onehot_all[y_index]
     # print(X_train.shape)
+
+    ## Concat additional data
+    X_train = np.concatenate((X_train, X_train_new), axis=0)
+    y_train_onehot = np.concatenate((y_train_onehot, y_train_onehot_new), axis=0)
 
     dataset = create_from_X_y(
         X_train, y_train_onehot, sfreq=200,  # Sampling frequency, optional
@@ -131,8 +176,8 @@ for i_fold in range(0,10):
         model = model.cuda()
 
     # We found these values to be good for the shallow network:
-    lr = 0.0625 * 0.05
-    weight_decay = 0.005
+    lr = 0.0625 * 0.5
+    weight_decay = 0.05
 
     # For deep4 they should be:
     # lr = 1 * 0.01
