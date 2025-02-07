@@ -45,7 +45,7 @@ def get_data_path(hr_file_path):
                         data_path = os.path.join(hr_file_path, folder, file)
     return data_path
 
-hr_file_path = "/home/hanwei/Music/P005"
+hr_file_path = "/home/hanwei/Music/P003"
 data_path = get_data_path(hr_file_path)
 X_train_all,y_train_onehot_all,X_test_all,y_test_all = get_data_openclose(data_path,"")
 
@@ -90,21 +90,15 @@ def subj_independent(new_files):
     return X_train,y_train
 
 print("ADDING NEW SUBJ")
-# new_file = '/home/hanwei/Music/P003'
-# eeg_path = get_data_path(new_file)
-# X_train_new,y_train_onehot_new,X_test_all,y_test_all = get_data_openclose(eeg_path,"")
-# y_train_onehot_new = binary_labels = np.argmax(y_train_onehot_new, axis=1)
-# X_train_new = X_train_new[:,new_channel_index,:]
+def list_folders(directory):
+    return [os.path.join(directory, d) for d in os.listdir(directory) if os.path.isdir(os.path.join(directory, d))]
 
-# new_file = '/home/hanwei/Music/MBCI005'
-# eeg_path = get_data_path(new_file)
-# X_train_new_2,y_train_onehot_new_2,X_test_all,y_test_all = get_data_openclose(eeg_path,"")
-# y_train_onehot_new_2 = binary_labels = np.argmax(y_train_onehot_new_2, axis=1)
-# X_train_new_2 = X_train_new_2[:,new_channel_index,:]
-# X_train_new = np.concatenate((X_train_new, X_train_new_2), axis=0)
-# y_train_onehot_new = np.concatenate((y_train_onehot_new, y_train_onehot_new_2), axis=0)
-
-X_train_new, y_train_onehot_new = subj_independent(['/home/hanwei/Music/P003','/home/hanwei/Music/MBCI005'])
+# Example usage
+folder_path = "/home/hanwei/Music/"
+folders = list_folders(folder_path)
+folders.remove(hr_file_path)
+print(folders)
+X_train_new, y_train_onehot_new = subj_independent(folders)
 
 ### Random dataset creation
 n_classes = 2
@@ -166,6 +160,36 @@ for i_fold in range(0,num_folds):
         n_filters_spat=30,
         final_conv_length='auto',
     )
+    from braindecode.models import Deep4Net
+    n_fake_chans = n_chans
+    n_fake_targets = n_classes
+    model = Deep4Net(
+        n_chans=n_fake_chans,
+        n_outputs=n_fake_targets,
+        n_times=input_window_samples,
+        n_filters_time=25,
+        n_filters_spat=25,
+        stride_before_pool=True,
+        n_filters_2=n_fake_chans * 2,
+        n_filters_3=n_fake_chans * 4,
+        n_filters_4=n_fake_chans * 8,
+        final_conv_length='auto',
+    )
+
+    # from braindecode.models import ATCNet
+    # model = ATCNet(
+    #     n_outputs=n_classes,
+    #     n_chans=n_chans,
+    #     input_window_seconds=4,
+    #     n_times=input_window_samples,
+    #     # conv_block_n_filters=4, 
+    #     # conv_block_kernel_length_1=16,
+    #     # final_fc_length='auto',
+    # )
+    # print(model)
+
+    # from model2 import ShallowFBCSPNetTransformer
+    # model = ShallowFBCSPNetTransformer(n_chans, n_classes, input_window_samples)
 
     # Display torchinfo table describing the model
     # print(model)
