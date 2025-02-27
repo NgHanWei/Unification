@@ -2,7 +2,7 @@ import mne
 from utils.eventinfo_dual import *
 from utils.preprocess import preprocess_data
 
-def load_data_per_subject_eeg(path, paradigm):
+def load_data_per_subject_eeg(path, paradigm,phasetype):
 
     subject_path = path
 
@@ -18,7 +18,7 @@ def load_data_per_subject_eeg(path, paradigm):
     ## 'hr' extype eventinfo.py change to close and open readings only
     extype = 'hr'
     ## XIMING
-    extype = 'motiv'
+    extype = phasetype
 
     if extype == 'hr':
         ev = eventlist_HRmi(event, fsamp)  # eventlist_HRrest1
@@ -31,6 +31,9 @@ def load_data_per_subject_eeg(path, paradigm):
     elif extype == 'motiv':
         ev = eventlist_grazmi(event, fsamp)
         taskdur = 4  # task duration in seconds
+    elif extype == 'motiv_2':
+        ev = eventlist_grazmi_2(event, fsamp)
+        taskdur = 4  # task duration in seconds
     elif extype == 'cirg':
         ev = eventlist_cirgmi(event, fsamp)
         taskdur = 4  # task duration in seconds
@@ -40,13 +43,15 @@ def load_data_per_subject_eeg(path, paradigm):
     rawdata['event'] = event
 
     sampdur = int(fsamp * taskdur)
+    sampoff = int(fsamp * 2)
     # prepdur = int(fsamp * 0)
 
     data = dict({'X': [], 'y': [], 'yclass': []})
     # print(ev)
     for i, t in enumerate(ev['code']):
         if (ev['label'][i] != 'non'):
-            data['X'].append(eeg[:, ev['sampstart'][i]:ev['sampstart'][i] + sampdur])
+            # data['X'].append(eeg[:, ev['sampstart'][i]:ev['sampstart'][i] + sampdur])
+            data['X'].append(eeg[:,ev['sampstart'][i]-sampoff:ev['sampstart'][i]+ sampdur-sampoff])
             # data['X'].append(eeg[:,ev['sampstart'][i]-prepdur :ev['sampstart'][i]+ sampdur])
             data['y'].append(t)
             data['yclass'].append(ev['label'][i])
