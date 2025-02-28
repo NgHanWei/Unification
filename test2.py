@@ -58,10 +58,12 @@ def get_data_path(hr_file_path):
     return data_path
 
 ## Target subject for eval
-hr_file_path = "/home/hanwei/Music/MBCI001"
+hr_file_path = "/home/hanwei/Music/MBCI008"
 data_path = get_data_path(hr_file_path)
-X_train_all,y_train_onehot_all,X_test_all,y_test_all = get_data_openclose(data_path,"","motiv")
-
+if "Phase2" in hr_file_path:
+    X_train_all,y_train_onehot_all,X_test_all,y_test_all = get_data_openclose(data_path,"","motiv_2")
+else:
+    X_train_all,y_train_onehot_all,X_test_all,y_test_all = get_data_openclose(data_path,"","motiv")
 all_channels = ['Fp1','Fz','F3','F7','FT9','FC5','FC1','C3','T7','CP5','CP1','Pz','P3','P7','O1','Oz','O2','P4','P8',
                             'CP6','CP2','Cz','C4','T8','FT10','FC6','FC2','F4','F8','Fp2','AF7','AF3','AFz','F1','F5','FT7','FC3','C1',
                             'C5','TP7','CP3','P1','P5','PO7','PO3','POz','PO4','PO8','P6','P2','CPz','CP4','TP8','C6','C2','FC4','FT8',
@@ -137,10 +139,12 @@ for i_fold in range(0,num_folds):
     if "Phase2" in hr_file_path:
         print("Phase 2 Data Split")
         ## For Phase 2 Only
-        X_train = X_train_all[:40]
-        y_train_onehot = y_train_onehot_all[:40]
-        X_test = X_train_all[40:]
-        y_test = y_train_onehot_all[40:]
+        # X_train = X_train_all
+        # y_train_onehot = y_train_onehot_all
+        X_train = []
+        y_train_onehot = []
+        X_test = X_train_all
+        y_test = y_train_onehot_all
 
     else:
         y_index = list(kf.split(X_train_all, y_train_onehot_all))[i_fold][1]
@@ -152,13 +156,14 @@ for i_fold in range(0,num_folds):
         print(X_train.shape)
 
 
-    ## Selection for additional data concat
+    ## Selection for additional data concat (if for phase 2, can select the phase 1 to concat)
     ## Choose best folders
     print("SUBJ SELECTION")
     from select_subj import subj_selector
     selector = subj_selector(folders,X_train,y_train_onehot)
     # selected_folders = selector.compare_runs()
-    selected_folders = ["/home/hanwei/Music/MBCI005","/home/hanwei/Music/P003","/home/hanwei/Music/P005"]
+    # selected_folders = ["/home/hanwei/Music/MBCI003","/home/hanwei/Music/P003","/home/hanwei/Music/P005"]
+    selected_folders = ["/home/hanwei/Music/MBCI008"]
     if hr_file_path in selected_folders:
         selected_folders.remove(hr_file_path)
     print(selected_folders)
@@ -168,8 +173,12 @@ for i_fold in range(0,num_folds):
         X_train_new, y_train_onehot_new = subj_independent(selected_folders)
 
         ## Concat additional data
-        # X_train = np.concatenate((X_train, X_train_new), axis=0)
-        # y_train_onehot = np.concatenate((y_train_onehot, y_train_onehot_new), axis=0)
+        if len(X_train) != 0:
+            X_train = np.concatenate((X_train, X_train_new), axis=0)
+            y_train_onehot = np.concatenate((y_train_onehot, y_train_onehot_new), axis=0)
+        else:
+            X_train = X_train_new
+            y_train_onehot = y_train_onehot_new
 
     print(X_train.shape)
     print(y_train_onehot.shape)
